@@ -1,0 +1,46 @@
+name: Test and Deploy
+
+on:
+  push:
+    branches:
+      - main # Trigger on pushes to main
+  pull_request: # Also trigger on pull requests to run tests
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        python-version: ["3.12"]
+      fail-fast: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: pyproject.toml
+
+      - name: Check OPENAI_API_KEY
+        run: |
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ]; then
+            echo "OPENAI_API_KEY is not set. Please set it in the repository secrets."
+            exit 1
+          fi
+
+      - name: Install Dependencies
+        run: pip install .[testing]
+
+      - name: Run tests
+        run: pytest
+        env:
+          CONTEXT: ${{ runner.os }}-py${{ matrix.python-version }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

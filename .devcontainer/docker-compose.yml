@@ -1,0 +1,17 @@
+version: '3'
+
+services:
+  python-3.12-mcp-server:  # nosemgrep
+    image: mcr.microsoft.com/devcontainers/python:3.12
+    container_name: mcp-server-${USER}-python-3.12
+    volumes:
+      - ../:/workspaces/mcp-server:cached
+    command: sleep infinity
+    env_file:
+      - ./devcontainer.env
+    networks:
+      - mcp-server-network
+
+networks:
+  mcp-server-network:
+    name: mcp-server-${USER}-network

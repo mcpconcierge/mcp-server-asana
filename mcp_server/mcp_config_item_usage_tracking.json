@@ -1,0 +1,20 @@
+{
+  "server": {
+    "url": "https://events.1password.com"
+  },
+  "authentication": [
+  {
+    "schema_parameters": {
+      "scheme": "bearer"
+    },
+    "type": "http",
+    "value": "BEARER_TOKEN"
+  }
+],
+  "operations": [
+  {
+    "description": "This endpoint requires your JSON Web Token to have the *itemusages* feature.",
+    "name": "get_item_usages"
+  }
+]
+}

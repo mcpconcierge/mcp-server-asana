@@ -1,0 +1,24 @@
+{
+  "server": {
+    "url": "https://events.1password.com"
+  },
+  "authentication": [
+  {
+    "schema_parameters": {
+      "scheme": "bearer"
+    },
+    "type": "http",
+    "value": "BEARER_TOKEN"
+  }
+],
+  "operations": [
+  {
+    "description": "Performs introspection of the provided Bearer JWT token",
+    "name": "get_auth_introspect"
+  },
+  {
+    "description": "This endpoint requires your JSON Web Token to have the *signinattempts* feature.",
+    "name": "get_sign_in_attempts"
+  }
+]
+}
