@@ -103,7 +103,7 @@ Supported keys inside the JSON file:
 * `env`: optional map of additional environment variables to set when launching the server.
 * `security_path`, `config`, `mcp_settings`: optional values for referencing additional JSON content.
 
-If you keep the file elsewhere, point the loader at it by exporting `MCP_LOCAL_SETTINGS` with the desired path once.
+If you keep the file elsewhere, point the loader at it by exporting `MCP_LOCAL_SETTINGS` with the desired path once.\r\n\r\nAlternatively, you can skip the JSON file when deploying (e.g., on Coolify) by setting an `ASANA_PAT` environment variable with your Personal Access Token. The server will wrap it in the correct bearer configuration automatically at startup.
 
 
 The [tests/test_mcp_server.py](tests/test_mcp_server.py) file demonstrates how to start and interact with the server programmatically for testing.

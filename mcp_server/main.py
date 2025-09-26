@@ -4469,6 +4469,15 @@ if __name__ == "__main__":
 
     _load_local_settings()
 
+    if "SECURITY" not in os.environ:
+        token = os.environ.get("ASANA_PAT") or os.environ.get("ASANA_TOKEN")
+        if token:
+            os.environ["SECURITY"] = json.dumps({
+                "type": "http",
+                "schema_parameters": {"scheme": "bearer"},
+                "value": token.strip(),
+            })
+
     if "CONFIG_PATH" in os.environ:
         config_path = os.environ["CONFIG_PATH"]
         app.load_configuration(config_path)
@@ -4478,6 +4487,24 @@ if __name__ == "__main__":
         app.load_configuration_from_string(config)
 
     if "SECURITY" in os.environ:
+        security_raw = os.environ["SECURITY"]
+        if security_raw:
+            stripped = security_raw.strip()
+            ensure_json = False
+            if not stripped.startswith("{"):
+                ensure_json = True
+            else:
+                try:
+                    json.loads(stripped)
+                except json.JSONDecodeError:
+                    ensure_json = True
+            if ensure_json:
+                os.environ["SECURITY"] = json.dumps({
+                    "type": "http",
+                    "schema_parameters": {"scheme": "bearer"},
+                    "value": stripped,
+                })
+
         security_params = BaseSecurity.parse_security_parameters_from_env(
             os.environ,
         )
