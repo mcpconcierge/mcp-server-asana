@@ -4511,6 +4511,25 @@ if __name__ == "__main__":
 
         app.set_security_params(security_params)
 
-    mcp_settings = json.loads(os.environ.get("MCP_SETTINGS", "{}"))
+    mcp_settings: dict[str, Any] = {}
+    mcp_settings_raw = os.environ.get("MCP_SETTINGS")
+    if mcp_settings_raw:
+        try:
+            parsed_settings = json.loads(mcp_settings_raw)
+        except json.JSONDecodeError:
+            parsed_settings = None
+        if isinstance(parsed_settings, dict):
+            mcp_settings.update(parsed_settings)
+
+    host_override = os.environ.get("MCP_HOST")
+    if host_override:
+        mcp_settings["host"] = host_override
+
+    port_override = os.environ.get("MCP_PORT")
+    if port_override:
+        try:
+            mcp_settings["port"] = int(port_override)
+        except (TypeError, ValueError):
+            pass
 
     app.get_mcp(**mcp_settings).run(transport=args.transport)
