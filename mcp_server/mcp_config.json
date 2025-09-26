@@ -1,28 +1,36 @@
 {
   "server": {
-    "url": "https://events.1password.com"
+    "url": "https://app.asana.com/api/1.0"
   },
   "authentication": [
-  {
-    "schema_parameters": {
-      "scheme": "bearer"
-    },
-    "type": "http",
-    "value": "BEARER_TOKEN"
-  }
-],
+    {
+      "type": "http",
+      "schema_parameters": {
+        "scheme": "bearer"
+      },
+      "value": "BEARER_TOKEN"
+    }
+  ],
   "operations": [
-  {
-    "description": "Performs introspection of the provided Bearer JWT token",
-    "name": "get_auth_introspect"
-  },
-  {
-    "description": "This endpoint requires your JSON Web Token to have the *itemusages* feature.",
-    "name": "get_item_usages"
-  },
-  {
-    "description": "This endpoint requires your JSON Web Token to have the *signinattempts* feature.",
-    "name": "get_sign_in_attempts"
-  }
-]
+    {
+      "name": "get_workspaces",
+      "description": "List the workspaces the authenticated user can access."
+    },
+    {
+      "name": "get_projects",
+      "description": "List projects visible to the authenticated user across workspaces."
+    },
+    {
+      "name": "get_projects_for_workspace",
+      "description": "List projects within a specific workspace."
+    },
+    {
+      "name": "get_tasks",
+      "description": "List tasks filtered by project or other parameters."
+    },
+    {
+      "name": "get_task",
+      "description": "Fetch the full record for a single task."
+    }
+  ]
 }

@@ -9,6 +9,7 @@ import json
 import os
 from datetime import date as date_aliased
 from datetime import datetime
+from pathlib import Path
 from typing import *
 from typing import Optional, Union
 
@@ -4401,6 +4402,62 @@ def get_workspace_memberships_for_workspace(
     raise RuntimeError("Should be patched by MCPProxy and never executed")
 
 
+def _load_local_settings() -> None:
+    """Load project-local settings for environment configuration."""
+    settings_hint = os.environ.get("MCP_LOCAL_SETTINGS")
+
+    candidate_paths: list[Path] = []
+    if settings_hint:
+        candidate_paths.append(Path(settings_hint))
+
+    module_dir = Path(__file__).resolve().parent
+    candidate_paths.append(module_dir / "local_settings.json")
+    candidate_paths.append(module_dir.parent / "local_settings.json")
+
+    for candidate in candidate_paths:
+        try:
+            candidate = candidate.expanduser().resolve()
+        except (FileNotFoundError, RuntimeError, AttributeError):
+            continue
+        if not candidate.exists():
+            continue
+        try:
+            raw_content = candidate.read_text(encoding="utf-8")
+            data = json.loads(raw_content)
+        except Exception:
+            continue
+
+        for key, value in data.get("env", {}).items():
+            if key not in os.environ:
+                os.environ[key] = str(value)
+
+        if "config_path" in data and "CONFIG_PATH" not in os.environ:
+            config_path = Path(str(data["config_path"]))
+            if not config_path.is_absolute():
+                config_path = (candidate.parent / config_path).resolve()
+            os.environ["CONFIG_PATH"] = str(config_path)
+
+        if "config" in data and "CONFIG" not in os.environ:
+            config_value = data["config"]
+            if isinstance(config_value, str):
+                os.environ["CONFIG"] = config_value
+            else:
+                os.environ["CONFIG"] = json.dumps(config_value)
+
+        if "mcp_settings" in data and "MCP_SETTINGS" not in os.environ:
+            os.environ["MCP_SETTINGS"] = json.dumps(data["mcp_settings"])
+
+        if "security" in data and "SECURITY" not in os.environ:
+            os.environ["SECURITY"] = json.dumps(data["security"])
+
+        if "security_path" in data and "SECURITY" not in os.environ:
+            security_path = Path(str(data["security_path"]))
+            if not security_path.is_absolute():
+                security_path = (candidate.parent / security_path).resolve()
+            os.environ["SECURITY"] = security_path.read_text(encoding="utf-8").strip()
+
+        break
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MCP Server")
     parser.add_argument(
@@ -4409,6 +4466,8 @@ if __name__ == "__main__":
         help="Transport mode (stdio, sse or streamable-http)",
     )
     args = parser.parse_args()
+
+    _load_local_settings()
 
     if "CONFIG_PATH" in os.environ:
         config_path = os.environ["CONFIG_PATH"]

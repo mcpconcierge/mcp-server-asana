@@ -12,10 +12,23 @@ This project is an MCP (Model Context Protocol) Server for the given OpenAPI URL
 1.  Clone the repository:
     ```sh
     git clone <repository-url>
-    cd mcp-server
+    cd mcp-server-asana
+    uv venv .venv
+    .venv\Scripts\activate
     ```
 2.  Install dependencies:
-    The [.devcontainer/setup.sh](.devcontainer/setup.sh) script handles installing dependencies using `pip install -e ".[dev]"`. If you are not using the dev container, you can run this command manually.
+    ```
+    uv pip install --editable "."
+    ```
+3. Run Server in SSE
+```
+python mcp_server/main.py sse
+```
+## Development
+
+This project uses `ruff` for linting and formatting, `mypy` for static type checking, and `pytest` for testing.
+
+The [.devcontainer/setup.sh](.devcontainer/setup.sh) script handles installing dependencies using `pip install -e ".[dev]"`. If you are not using the dev container, you can run this command manually.
     ```sh
     pip install -e ".[dev]"
     ```
@@ -23,10 +36,6 @@ This project is an MCP (Model Context Protocol) Server for the given OpenAPI URL
     ```sh
     uv pip install --editable ".[dev]"
     ```
-
-## Development
-
-This project uses `ruff` for linting and formatting, `mypy` for static type checking, and `pytest` for testing.
 
 ### Linting and Formatting
 
@@ -83,6 +92,19 @@ The server can be configured using environment variables:
 *   `SECURITY`: Environment variables for security parameters (e.g., API keys).
 
 Refer to the `if __name__ == "__main__":` block in [mcp_server/main.py](mcp_server/main.py) for details on how these are loaded.
+
+### Local configuration (tokens & defaults)
+
+To persist your Asana token and default options, copy [mcp_server/local_settings.example.json](mcp_server/local_settings.example.json) to `mcp_server/local_settings.json` and replace `ASANA_PAT_PLACEHOLDER` with your Personal Access Token. The file is ignored by git, and on startup the server will automatically load any values defined there.
+
+Supported keys inside the JSON file:
+* `config_path`: relative or absolute path to a config file such as `mcp_config.json`.
+* `security`: object that matches the `SECURITY` JSON payload (e.g., bearer token details).
+* `env`: optional map of additional environment variables to set when launching the server.
+* `security_path`, `config`, `mcp_settings`: optional values for referencing additional JSON content.
+
+If you keep the file elsewhere, point the loader at it by exporting `MCP_LOCAL_SETTINGS` with the desired path once.
+
 
 The [tests/test_mcp_server.py](tests/test_mcp_server.py) file demonstrates how to start and interact with the server programmatically for testing.
 
