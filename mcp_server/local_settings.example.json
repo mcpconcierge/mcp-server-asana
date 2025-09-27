@@ -1,0 +1,16 @@
+{
+  "config_path": "mcp_config.json",
+  "security": {
+    "type": "http",
+    "schema_parameters": {
+      "scheme": "bearer"
+    },
+    "value": "ASANA_PAT_PLACEHOLDER"
+  },
+  "env": {
+    "ASANA_PAT": "ASANA_PAT_PLACEHOLDER",
+    "MCP_API_KEY": "COMPANY_SHARED_SECRET",
+    "MCP_HOST": "0.0.0.0",
+    "MCP_PORT": "3001"
+  }
+}

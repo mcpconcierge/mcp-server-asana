@@ -7,6 +7,7 @@
 import argparse
 import json
 import os
+import logging
 from datetime import date as date_aliased
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +20,11 @@ from autogen.mcp.mcp_proxy.security import (
     HTTPBearer,
     UnsuportedSecurityStub,
 )
-from fastapi import Query, UploadFile
+from fastapi import Query, UploadFile, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+logger = logging.getLogger(__name__)
+
 
 from models import (
     ActorType,
@@ -286,7 +291,211 @@ app = MCPProxy(
     servers=[{'description': 'Main endpoint.', 'url': 'https://app.asana.com/api/1.0'}],
 )
 
+class APIKeyMiddleware(BaseHTTPMiddleware):
+    """Require a static API key for all incoming requests."""
 
+    def __init__(
+        self,
+        app: MCPProxy,
+        api_key: str,
+        header_name: str = "x-mcp-api-key",
+        exempt_paths: Optional[set[str]] | None = None,
+    ) -> None:
+        super().__init__(app)
+        self.api_key = api_key
+        self.header_name = header_name.lower()
+        self.exempt_paths = exempt_paths or set()
+
+    async def dispatch(self, request: Request, call_next):
+        if not self.api_key:
+            return await call_next(request)
+
+        path = request.url.path
+        if request.method == "OPTIONS" or path in self.exempt_paths:
+            return await call_next(request)
+
+        header_value = request.headers.get(self.header_name)
+        auth_header = request.headers.get("authorization")
+
+        valid = False
+        if header_value and header_value.strip() == self.api_key:
+            valid = True
+        elif auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+            if token == self.api_key:
+                valid = True
+
+        if not valid:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing or invalid MCP API key."},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        return await call_next(request)
+
+
+
+def _wrap_text_content(payload: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
+    """Return MCP-compliant text content wrapper."""
+    return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}]}
+
+
+def _resolve_workspace_gid(app: MCPProxy) -> str:
+    """Find a workspace gid via env or the first available workspace."""
+    cached = os.environ.get("ASANA_WORKSPACE_GID")
+    if cached:
+        return cached
+
+    workspaces_fn = app.get_function("get_workspaces")
+    response = workspaces_fn()
+    items = response.get("data") or []
+    if not items:
+        raise RuntimeError("Unable to determine Asana workspace - set ASANA_WORKSPACE_GID")
+
+    gid = items[0].get("gid")
+    if not gid:
+        raise RuntimeError("Workspace response missing gid; set ASANA_WORKSPACE_GID explicitly")
+    return gid
+
+
+def _register_tool(func: Callable[..., dict[str, Any]], description: str) -> None:
+    """Attach metadata and register a custom tool with the proxy."""
+    func._description = description  # type: ignore[attr-defined]
+    existing = {f.__name__ for f in app._registered_funcs}
+    if func.__name__ not in existing:
+        app._registered_funcs.append(func)
+
+
+def search(query: str) -> dict[str, list[dict[str, str]]]:
+    """Search Asana tasks and projects via the typeahead API."""
+    query = (query or "").strip()
+    if not query:
+        return _wrap_text_content({"results": []})
+
+    try:
+        workspace_gid = _resolve_workspace_gid(app)
+    except Exception as exc:  # pragma: no cover - logging path
+        logger.warning("Search aborted: %s", exc)
+        return _wrap_text_content({"results": []})
+
+    limit = int(os.environ.get("ASANA_SEARCH_LIMIT", "5"))
+    typeahead_fn = app.get_function("typeahead_for_workspace")
+
+    seen: set[str] = set()
+    results: list[dict[str, str]] = []
+    for resource_type in ("task", "project"):
+        try:
+            response = typeahead_fn(
+                workspace_gid=workspace_gid,
+                resource_type=resource_type,
+                query=query,
+                count=limit,
+            )
+        except Exception as exc:  # pragma: no cover - network failures
+            logger.debug("Typeahead for %s failed: %s", resource_type, exc)
+            continue
+
+        for item in response.get("data", []):
+            gid = item.get("gid") or item.get("id")
+            if not gid:
+                continue
+            compound_id = f"{resource_type}:{gid}"
+            if compound_id in seen:
+                continue
+            seen.add(compound_id)
+
+            title = item.get("name") or f"{resource_type.title()} {gid}"
+            url = item.get("permalink_url")
+            if not url:
+                if resource_type == "task":
+                    url = f"https://app.asana.com/0/{workspace_gid}/{gid}"
+                elif resource_type == "project":
+                    url = f"https://app.asana.com/0/{gid}/list"
+                else:
+                    url = f"https://app.asana.com/0/{gid}"
+
+            results.append({
+                "id": compound_id,
+                "title": title,
+                "url": url,
+            })
+
+    return _wrap_text_content({"results": results})
+
+
+def fetch(document_id: str) -> dict[str, list[dict[str, str]]]:
+    """Fetch the full record for a task or project."""
+    if not document_id:
+        raise ValueError("Document identifier is required")
+
+    if ":" in document_id:
+        resource_type, gid = document_id.split(":", 1)
+    else:
+        resource_type, gid = "task", document_id
+
+    resource_type = resource_type.lower().strip()
+    gid = gid.strip()
+    if not gid:
+        raise ValueError("Document identifier missing Asana gid")
+
+    if resource_type == "task":
+        fetch_fn = app.get_function("get_task")
+        opt_fields = "name,notes,permalink_url,completed,assignee.name,due_on,resource_type,resource_subtype"
+        response = fetch_fn(task_gid=gid, opt_fields=opt_fields)
+    elif resource_type == "project":
+        fetch_fn = app.get_function("get_project")
+        opt_fields = "name,notes,permalink_url,color,archived,current_status,resource_type"
+        response = fetch_fn(project_gid=gid, opt_fields=opt_fields)
+    else:
+        raise ValueError(f"Unsupported resource type '{resource_type}'")
+
+    data = response.get("data") or {}
+    title = data.get("name") or f"{resource_type.title()} {gid}"
+    text_body = data.get("notes") or ""
+    url = data.get("permalink_url")
+    if not url:
+        if resource_type == "task":
+            try:
+                workspace_gid = _resolve_workspace_gid(app)
+            except Exception:
+                workspace_gid = "0"
+            url = f"https://app.asana.com/0/{workspace_gid}/{gid}"
+        else:
+            url = f"https://app.asana.com/0/{gid}/list"
+
+    metadata: dict[str, Any] = {
+        "resource_type": resource_type,
+        "gid": gid,
+    }
+    if resource_type == "task":
+        metadata.update({
+            "completed": data.get("completed"),
+            "assignee": (data.get("assignee") or {}).get("name") if isinstance(data.get("assignee"), dict) else data.get("assignee"),
+            "due_on": data.get("due_on"),
+            "resource_subtype": data.get("resource_subtype"),
+        })
+    else:
+        current_status = data.get("current_status") or {}
+        metadata.update({
+            "color": data.get("color"),
+            "archived": data.get("archived"),
+            "status": current_status.get("color") if isinstance(current_status, dict) else current_status,
+        })
+
+    document = {
+        "id": document_id,
+        "title": title,
+        "text": text_body or title,
+        "url": url,
+        "metadata": metadata,
+    }
+
+    return _wrap_text_content(document)
+
+
+_register_tool(search, "Search Asana for tasks and projects via typeahead.")
+_register_tool(fetch, "Fetch full details for an Asana task or project by id.")
 @app.get(
     '/attachments',
     description=""" Returns the compact records for all attachments on the object.
@@ -4531,5 +4740,17 @@ if __name__ == "__main__":
             mcp_settings["port"] = int(port_override)
         except (TypeError, ValueError):
             pass
+
+    api_key = os.environ.get("MCP_API_KEY")
+    if api_key:
+        header_name = os.environ.get("MCP_API_KEY_HEADER", "x-mcp-api-key")
+        exempt_raw = os.environ.get("MCP_API_KEY_EXEMPT", "")
+        exempt_paths = {path.strip() for path in exempt_raw.split(",") if path.strip()}
+        app.add_middleware(
+            APIKeyMiddleware,
+            api_key=api_key.strip(),
+            header_name=(header_name or "x-mcp-api-key").strip().lower(),
+            exempt_paths=exempt_paths or None,
+        )
 
     app.get_mcp(**mcp_settings).run(transport=args.transport)
