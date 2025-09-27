@@ -424,76 +424,75 @@ def search(query: str) -> dict[str, list[dict[str, str]]]:
     return _wrap_text_content({"results": results})
 
 
-def fetch(document_id: str) -> dict[str, list[dict[str, str]]]:
-    """Fetch the full record for a task or project."""
-    if not document_id:
-        raise ValueError("Document identifier is required")
-
-    if ":" in document_id:
-        resource_type, gid = document_id.split(":", 1)
-    else:
-        resource_type, gid = "task", document_id
-
-    resource_type = resource_type.lower().strip()
-    gid = gid.strip()
-    if not gid:
-        raise ValueError("Document identifier missing Asana gid")
-
-    if resource_type == "task":
-        fetch_fn = app.get_function("get_task")
-        opt_fields = "name,notes,permalink_url,completed,assignee.name,due_on,resource_type,resource_subtype"
-        response = fetch_fn(task_gid=gid, opt_fields=opt_fields)
-    elif resource_type == "project":
-        fetch_fn = app.get_function("get_project")
-        opt_fields = "name,notes,permalink_url,color,archived,current_status,resource_type"
-        response = fetch_fn(project_gid=gid, opt_fields=opt_fields)
-    else:
-        raise ValueError(f"Unsupported resource type '{resource_type}'")
-
-    data = response.get("data") or {}
-    title = data.get("name") or f"{resource_type.title()} {gid}"
-    text_body = data.get("notes") or ""
-    url = data.get("permalink_url")
-    if not url:
-        if resource_type == "task":
-            try:
-                workspace_gid = _resolve_workspace_gid(app)
-            except Exception:
-                workspace_gid = "0"
-            url = f"https://app.asana.com/0/{workspace_gid}/{gid}"
-        else:
-            url = f"https://app.asana.com/0/{gid}/list"
-
-    metadata: dict[str, Any] = {
-        "resource_type": resource_type,
-        "gid": gid,
-    }
-    if resource_type == "task":
-        metadata.update({
-            "completed": data.get("completed"),
-            "assignee": (data.get("assignee") or {}).get("name") if isinstance(data.get("assignee"), dict) else data.get("assignee"),
-            "due_on": data.get("due_on"),
-            "resource_subtype": data.get("resource_subtype"),
-        })
-    else:
-        current_status = data.get("current_status") or {}
-        metadata.update({
-            "color": data.get("color"),
-            "archived": data.get("archived"),
-            "status": current_status.get("color") if isinstance(current_status, dict) else current_status,
-        })
-
-    document = {
-        "id": document_id,
-        "title": title,
-        "text": text_body or title,
-        "url": url,
-        "metadata": metadata,
-    }
-
-    return _wrap_text_content(document)
-
-
+def fetch(id: str) -> dict[str, list[dict[str, str]]]:
+    """Fetch the full record for a task or project."""
+    if not id:
+        raise ValueError("Document identifier is required")
+
+    if ':' in id:
+        resource_type, gid = id.split(':', 1)
+    else:
+        resource_type, gid = 'task', id
+
+    resource_type = resource_type.lower().strip()
+    gid = gid.strip()
+    if not gid:
+        raise ValueError("Document identifier missing Asana gid")
+
+    if resource_type == 'task':
+        fetch_fn = app.get_function('get_task')
+        opt_fields = 'name,notes,permalink_url,completed,assignee.name,due_on,resource_type,resource_subtype'
+        response = fetch_fn(task_gid=gid, opt_fields=opt_fields)
+    elif resource_type == 'project':
+        fetch_fn = app.get_function('get_project')
+        opt_fields = 'name,notes,permalink_url,color,archived,current_status,resource_type'
+        response = fetch_fn(project_gid=gid, opt_fields=opt_fields)
+    else:
+        raise ValueError(f"Unsupported resource type '{resource_type}'")
+
+    data = response.get('data') or {}
+    title = data.get('name') or f"{resource_type.title()} {gid}"
+    text_body = data.get('notes') or ''
+    url = data.get('permalink_url')
+    if not url:
+        if resource_type == 'task':
+            try:
+                workspace_gid = _resolve_workspace_gid(app)
+            except Exception:
+                workspace_gid = '0'
+            url = f"https://app.asana.com/0/{workspace_gid}/{gid}"
+        else:
+            url = f"https://app.asana.com/0/{gid}/list"
+
+    metadata: dict[str, Any] = {
+        'resource_type': resource_type,
+        'gid': gid,
+    }
+    if resource_type == 'task':
+        metadata.update({
+            'completed': data.get('completed'),
+            'assignee': (data.get('assignee') or {}).get('name') if isinstance(data.get('assignee'), dict) else data.get('assignee'),
+            'due_on': data.get('due_on'),
+            'resource_subtype': data.get('resource_subtype'),
+        })
+    else:
+        current_status = data.get('current_status') or {}
+        metadata.update({
+            'color': data.get('color'),
+            'archived': data.get('archived'),
+            'status': current_status.get('color') if isinstance(current_status, dict) else current_status,
+        })
+
+    document = {
+        'id': id,
+        'title': title,
+        'text': text_body or title,
+        'url': url,
+        'metadata': metadata,
+    }
+
+    return _wrap_text_content(document)
+
 _register_tool(search, "Search Asana for tasks and projects via typeahead.")
 _register_tool(fetch, "Fetch full details for an Asana task or project by id.")
 @app.get(
