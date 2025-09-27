@@ -23,7 +23,12 @@ This project is an MCP (Model Context Protocol) Server for the given OpenAPI URL
 3. Run Server in SSE
 ```
 python mcp_server/main.py sse
+or
+python mcp_server/main.py streamable-http
 ```
+### Test MCP Server with MCP Inspector
+npx @modelcontextprotocol/inspector
+
 ## Development
 
 This project uses `ruff` for linting and formatting, `mypy` for static type checking, and `pytest` for testing.
